@@ -12,9 +12,11 @@
         <img alt="Sponsor Cinny" src="https://img.shields.io/opencollective/all/cinny?logo=opencollective&style=social"></a>
 </p>
 
-A Matrix client focusing primarily on simple, elegant and secure interface. The main goal is to have an instant messaging application that is easy on people and has a modern touch.
+A fork of Matrix client focusing primarily on simple, elegant and secure interface. The main goal is to have an instant messaging application that is easy on people and has a modern touch.
 - [Roadmap](https://github.com/orgs/cinnyapp/projects/1)
 - [Contributing](./CONTRIBUTING.md)
+
+This fork has a an opiniated UI, as well as native support for Bridge Management. 
 
 <img align="center" src="https://raw.githubusercontent.com/cinnyapp/cinny-site/main/assets/preview2-light.png" height="380">
 
