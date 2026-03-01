@@ -338,8 +338,8 @@ export function Direct() {
       <DirectHeader />
       <PageNavContent scrollRef={scrollRef}>
         <Box direction="Column" gap="200">
+          <DirectFavoritesGrid roomIds={favoriteDirectIds} />
           <DirectSectionFilters section={section} onSectionChange={setSection} />
-          {section === 'inbox' && <DirectFavoritesGrid roomIds={favoriteDirectIds} />}
           {noRoomToDisplay ? (
             <DirectEmpty />
           ) : (

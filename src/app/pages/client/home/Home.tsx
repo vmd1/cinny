@@ -58,7 +58,6 @@ import {
 import { RoomAvatar, RoomIcon } from '../../../components/room-avatar';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { getRoomAvatarUrl } from '../../../utils/room';
-import { nameInitials } from '../../../utils/common';
 
 type RoomListSection = 'inbox' | 'unread' | 'low_priority' | 'favorites';
 
@@ -166,7 +165,7 @@ function HomeSectionFilters({
   onSectionChange: (section: RoomListSection) => void;
 }) {
   return (
-    <Box gap="200" wrap="Wrap">
+    <Box gap="200" wrap="Wrap" style={{ padding: `${config.space.S100} ${config.space.S100}` }}>
       {SECTION_ITEMS.map((item) => (
         <Chip
           key={item.section}
@@ -224,15 +223,13 @@ function HomeFavoritesGrid({ roomIds }: { roomIds: string[] }) {
   if (roomIds.length === 0) return null;
 
   return (
-    <Box direction="Column" gap="200">
-      <Text size="L400">Favorites</Text>
-      <Box
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: config.space.S200,
-        }}
-      >
+    <Box
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: config.space.S200,
+      }}
+    >
         {roomIds.map((roomId) => {
           const room = mx.getRoom(roomId);
           if (!room) return null;
@@ -271,7 +268,6 @@ function HomeFavoritesGrid({ roomIds }: { roomIds: string[] }) {
             </Box>
           );
         })}
-      </Box>
     </Box>
   );
 }
@@ -335,17 +331,12 @@ export function Home() {
       <HomeHeader />
       <PageNavContent scrollRef={scrollRef}>
         <Box direction="Column" gap="200">
+          <HomeFavoritesGrid roomIds={favoriteRoomIds} />
           <HomeSectionFilters section={section} onSectionChange={setSection} />
-          {section === 'inbox' && <HomeFavoritesGrid roomIds={favoriteRoomIds} />}
           {noRoomToDisplay ? (
             <HomeEmpty />
           ) : (
             <NavCategory>
-              <NavCategoryHeader>
-                <Text size="L400" priority="300">
-                  Rooms
-                </Text>
-              </NavCategoryHeader>
               <div
                 style={{
                   position: 'relative',
