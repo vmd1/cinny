@@ -106,7 +106,7 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
       </Box>
       <Box shrink="No" direction="Column">
         {hideActivity ? <RoomViewFollowingPlaceholder /> : <RoomViewFollowing room={room} />}
-        <div style={{ padding: `0 ${config.space.S400}` }}>
+        <div style={{ padding: `0 ${config.space.S400} ${config.space.S200}` }}>
           {tombstoneEvent ? (
             <RoomTombstone
               roomId={roomId}
