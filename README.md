@@ -1,17 +1,16 @@
-# Finny
+# Cinny
 
 Finny is a fork of Cinny, a Matrix client focusing primarily on simple, elegant and secure interface. The main goal is to have an instant messaging application that is easy on people and has a modern touch.
 
 This fork has an opiniated UI, as well as native support for Bridge Management. It focuses on replicating the features of beeper.com into an open-source variant. Contribtions are welcome.
 
-
 ## Getting started
-A hosted web app is currently not available, see Self-hosting below.
+The web app is available at [finny.vmd1.dev](https://finny.vmd1.dev/) and gets updated on each new release.
 
 A desktop app is incoming, please wait.
 
 ## Self-hosting
-To host Finny on your own, simply pull the docker image from GitHub Container Registry.
+To host Cinny on your own, simply pull the docker image from GitHub Container Registry.
 
 * The default homeservers and explore pages are defined in [`config.json`](config.json).
 
@@ -40,12 +39,12 @@ npm run build # Compiles the app into the dist/ directory
 This repository includes a Dockerfile, which builds the application from source and serves it with Nginx on port 80. To
 use this locally, you can build the container like so:
 ```
-docker build -t finny:latest .
+docker build -t cinny:latest .
 ```
 
 You can then run the container you've built with a command similar to this:
 ```
-docker run -p 8080:80 finny:latest
+docker run -p 8080:80 cinny:latest
 ```
 
 This will forward your `localhost` port 8080 to the container's port 80. You can visit the app in your browser by navigating to `http://localhost:8080`.
