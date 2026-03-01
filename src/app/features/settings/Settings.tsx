@@ -33,12 +33,14 @@ import { About } from './about';
 import { UseStateProvider } from '../../components/UseStateProvider';
 import { stopPropagation } from '../../utils/keyboard';
 import { LogoutDialog } from '../../components/LogoutDialog';
+import { Bridges } from './bridges';
 
 export enum SettingsPages {
   GeneralPage,
   AccountPage,
   NotificationPage,
   DevicesPage,
+  BridgesPage,
   EmojisStickersPage,
   DeveloperToolsPage,
   AboutPage,
@@ -72,6 +74,11 @@ const useSettingsMenuItems = (): SettingsMenuItem[] =>
         page: SettingsPages.DevicesPage,
         name: 'Devices',
         icon: Icons.Monitor,
+      },
+      {
+        page: SettingsPages.BridgesPage,
+        name: 'Bridges',
+        icon: Icons.Link,
       },
       {
         page: SettingsPages.EmojisStickersPage,
@@ -221,6 +228,9 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
       )}
       {activePage === SettingsPages.DevicesPage && (
         <Devices requestClose={handlePageRequestClose} />
+      )}
+      {activePage === SettingsPages.BridgesPage && (
+        <Bridges requestClose={handlePageRequestClose} />
       )}
       {activePage === SettingsPages.EmojisStickersPage && (
         <EmojisStickers requestClose={handlePageRequestClose} />

@@ -100,26 +100,26 @@ export const silverTheme = createTheme(color, {
 
 const darkThemeData = {
   Background: {
-    Container: '#1A1A1A',
-    ContainerHover: '#262626',
-    ContainerActive: '#333333',
-    ContainerLine: '#404040',
+    Container: '#000000',
+    ContainerHover: '#0A0A0A',
+    ContainerActive: '#121212',
+    ContainerLine: '#1A1A1A',
     OnContainer: '#F2F2F2',
   },
 
   Surface: {
-    Container: '#262626',
-    ContainerHover: '#333333',
-    ContainerActive: '#404040',
-    ContainerLine: '#4D4D4D',
+    Container: '#000000',
+    ContainerHover: '#0A0A0A',
+    ContainerActive: '#121212',
+    ContainerLine: '#1A1A1A',
     OnContainer: '#F2F2F2',
   },
 
   SurfaceVariant: {
-    Container: '#333333',
-    ContainerHover: '#404040',
-    ContainerActive: '#4D4D4D',
-    ContainerLine: '#595959',
+    Container: '#0A0A0A',
+    ContainerHover: '#141414',
+    ContainerActive: '#1F1F1F',
+    ContainerLine: '#2A2A2A',
     OnContainer: '#F2F2F2',
   },
 

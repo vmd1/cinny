@@ -11,6 +11,7 @@ import {
   Avatar,
   Box,
   Button,
+  Chip,
   Icon,
   IconButton,
   Icons,
@@ -84,6 +85,20 @@ import { ContainerColor } from '../../../styles/ContainerColor.css';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
+import {
+  FavoriteRoomTag,
+  LowPriorityRoomTag,
+  hasRoomTag,
+  useRoomTagVersion,
+} from '../../../features/room-nav/roomTags';
+
+type RoomListSection = 'inbox' | 'unread' | 'low_priority' | 'favorites';
+
+const SECTION_ITEMS: { section: RoomListSection; label: string }[] = [
+  { section: 'inbox', label: 'Inbox' },
+  { section: 'unread', label: 'Unread' },
+  { section: 'low_priority', label: 'Low Priority' },
+];
 
 type SpaceMenuProps = {
   room: Room;
@@ -272,7 +287,11 @@ function SpaceHeader() {
             {joinRules?.join_rule !== JoinRule.Public && <Icon src={Icons.Lock} size="50" />}
           </Box>
           <Box shrink="No">
-            <IconButton aria-pressed={!!menuAnchor} variant="Background" onClick={handleOpenMenu}>
+            <IconButton
+              aria-pressed={!!menuAnchor}
+              variant="Background"
+              onClick={handleOpenMenu}
+            >
               <Icon src={Icons.VerticalDots} size="200" />
             </IconButton>
           </Box>
@@ -302,6 +321,30 @@ function SpaceHeader() {
         />
       )}
     </>
+  );
+}
+
+function SpaceSectionFilters({
+  section,
+  onSectionChange,
+}: {
+  section: RoomListSection;
+  onSectionChange: (section: RoomListSection) => void;
+}) {
+  return (
+    <Box gap="200" wrap="Wrap">
+      {SECTION_ITEMS.map((item) => (
+        <Chip
+          key={item.section}
+          variant={section === item.section ? 'Primary' : 'SurfaceVariant'}
+          radii="Pill"
+          size="400"
+          onClick={() => onSectionChange(item.section)}
+        >
+          {item.label}
+        </Chip>
+      ))}
+    </Box>
   );
 }
 
@@ -391,6 +434,7 @@ export function Space() {
   const selectedRoomId = useSelectedRoom();
   const lobbySelected = useSpaceLobbySelected(spaceIdOrAlias);
   const searchSelected = useSpaceSearchSelected(spaceIdOrAlias);
+  const [section, setSection] = useState<RoomListSection>('inbox');
 
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
@@ -424,8 +468,32 @@ export function Space() {
     )
   );
 
+  const hierarchyRoomIds = useMemo(() => hierarchy.map((item) => item.roomId), [hierarchy]);
+
+  const roomTagVersion = useRoomTagVersion(mx, hierarchyRoomIds);
+
+  const filteredHierarchy = useMemo(() => {
+    if (section === 'inbox') return hierarchy;
+
+    return hierarchy.filter(({ roomId }) => {
+      const room = mx.getRoom(roomId);
+      if (!room) return false;
+      if (room.isSpaceRoom()) return true;
+
+      if (section === 'unread') {
+        return roomToUnread.has(roomId);
+      }
+
+      if (section === 'favorites') {
+        return hasRoomTag(room, FavoriteRoomTag);
+      }
+
+      return hasRoomTag(room, LowPriorityRoomTag);
+    });
+  }, [mx, hierarchy, roomTagVersion, roomToUnread, section]);
+
   const virtualizer = useVirtualizer({
-    count: hierarchy.length,
+    count: filteredHierarchy.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 0,
     overscan: 10,
@@ -443,6 +511,7 @@ export function Space() {
       <SpaceHeader />
       <PageNavContent scrollRef={scrollRef}>
         <Box direction="Column" gap="300">
+          <SpaceSectionFilters section={section} onSectionChange={setSection} />
           {tombstoneEvent && (
             <SpaceTombstone
               roomId={space.roomId}
@@ -490,7 +559,7 @@ export function Space() {
             }}
           >
             {virtualizer.getVirtualItems().map((vItem) => {
-              const { roomId } = hierarchy[vItem.index] ?? {};
+              const { roomId } = filteredHierarchy[vItem.index] ?? {};
               const room = mx.getRoom(roomId);
               if (!room) return null;
 
@@ -523,7 +592,7 @@ export function Space() {
                   <RoomNavItem
                     room={room}
                     selected={selectedRoomId === roomId}
-                    showAvatar={mDirects.has(roomId)}
+                    showAvatar
                     direct={mDirects.has(roomId)}
                     linkPath={getToLink(roomId)}
                     notificationMode={getRoomNotificationMode(notificationPreferences, room.roomId)}

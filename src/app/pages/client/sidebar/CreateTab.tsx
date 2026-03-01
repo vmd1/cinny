@@ -9,8 +9,9 @@ import { SettingTile } from '../../../components/setting-tile';
 import { ContainerColor } from '../../../styles/ContainerColor.css';
 import {
   encodeSearchParamValueArray,
-  getCreatePath,
-  getSpacePath,
+  getHomeCreatePath,
+  getHomeRoomPath,
+  getHomeSearchPath,
   withSearchParam,
 } from '../../pathUtils';
 import { useCreateSelected } from '../../../hooks/router/useCreateSelected';
@@ -28,8 +29,13 @@ export function CreateTab() {
     setMenuCords(menuCords ? undefined : evt.currentTarget.getBoundingClientRect());
   };
 
-  const handleCreateSpace = () => {
-    navigate(getCreatePath());
+  const handleCreateRoom = () => {
+    navigate(getHomeCreatePath());
+    setMenuCords(undefined);
+  };
+
+  const handleMessageSearch = () => {
+    navigate(getHomeSearchPath());
     setMenuCords(undefined);
   };
 
@@ -40,7 +46,7 @@ export function CreateTab() {
 
   return (
     <SidebarItem active={createSelected}>
-      <SidebarItemTooltip tooltip="Add Space">
+      <SidebarItemTooltip tooltip="Home Actions">
         {(triggerRef) => (
           <PopOut
             anchor={menuCords}
@@ -70,12 +76,12 @@ export function CreateTab() {
                       radii="0"
                       as="button"
                       type="button"
-                      onClick={handleCreateSpace}
+                      onClick={handleCreateRoom}
                     >
-                      <SettingTile before={<Icon size="400" src={Icons.Space} />}>
-                        <Text size="H6">Create Space</Text>
+                      <SettingTile before={<Icon size="400" src={Icons.Plus} />}>
+                        <Text size="H6">Create Room</Text>
                         <Text size="T300" priority="300">
-                          Build a space for your community.
+                          Start a new room.
                         </Text>
                       </SettingTile>
                     </SequenceCard>
@@ -92,7 +98,24 @@ export function CreateTab() {
                       <SettingTile before={<Icon size="400" src={Icons.Link} />}>
                         <Text size="H6">Join with Address</Text>
                         <Text size="T300" priority="300">
-                          Become a part of existing community.
+                          Open or join any room by alias or ID.
+                        </Text>
+                      </SettingTile>
+                    </SequenceCard>
+                    <SequenceCard
+                      style={{ padding: config.space.S300 }}
+                      variant="Surface"
+                      direction="Column"
+                      gap="100"
+                      radii="0"
+                      as="button"
+                      type="button"
+                      onClick={handleMessageSearch}
+                    >
+                      <SettingTile before={<Icon size="400" src={Icons.Search} />}>
+                        <Text size="H6">Message Search</Text>
+                        <Text size="T300" priority="300">
+                          Search messages across rooms.
                         </Text>
                       </SettingTile>
                     </SequenceCard>
@@ -115,7 +138,7 @@ export function CreateTab() {
                 onCancel={() => setJoinAddress(false)}
                 onOpen={(roomIdOrAlias, viaServers) => {
                   setJoinAddress(false);
-                  const path = getSpacePath(roomIdOrAlias);
+                  const path = getHomeRoomPath(roomIdOrAlias);
                   navigate(
                     viaServers
                       ? withSearchParam<_RoomSearchParams>(path, {

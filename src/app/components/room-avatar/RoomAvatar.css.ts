@@ -5,6 +5,8 @@ export const RoomAvatar = style({
   backgroundColor: color.Secondary.Container,
   color: color.Secondary.OnContainer,
   textTransform: 'capitalize',
+  borderRadius: '999px',
+  overflow: 'hidden',
 
   selectors: {
     '&[data-image-loaded="true"]': {
