@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Box, Button, Icon, IconButton, Icons, Scroll, Spinner, Text, config } from 'folds';
+import {
+  Badge,
+  Box,
+  Button,
+  Icon,
+  IconButton,
+  Icons,
+  Input,
+  Scroll,
+  Spinner,
+  Text,
+  config,
+} from 'folds';
+import { QRCodeSVG } from 'qrcode.react';
 import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SettingTile } from '../../../components/setting-tile';
@@ -106,7 +119,13 @@ const guessBridgeIdFromUrl = (bridgeUrl: string): string => {
   if (normalized.includes('facebook')) return 'meta';
   if (normalized.includes('discord')) return 'discord';
   if (normalized.includes('twitter')) return 'twitter';
-  if (normalized.includes('gmessages') || normalized.includes('google-messages')) return 'gmessages';
+  if (
+    normalized.includes('gmessages') ||
+    normalized.includes('google-messages') ||
+    normalized.includes('googlemessages')
+  ) {
+    return 'gmessages';
+  }
   if (normalized.includes('googlechat') || normalized.includes('google-chat')) return 'googlechat';
 
   try {
@@ -220,6 +239,71 @@ type PairingResult = {
   url?: string;
   qr?: string;
   code?: string;
+  raw?: unknown;
+};
+
+type PairingField = {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  pattern?: string;
+  required?: boolean;
+};
+
+type DesktopCookieCaptureParams = {
+  url: string;
+  fields: { id: string; required: boolean }[];
+};
+
+type DesktopCookieCaptureResult = {
+  cookies: Record<string, string>;
+};
+
+type CinnyDesktopBridgeApi = {
+  openBridgeCookieLogin?: (
+    params: DesktopCookieCaptureParams
+  ) => Promise<DesktopCookieCaptureResult>;
+};
+
+type PairingStep =
+  | { kind: 'open-url'; instructions?: string; url: string }
+  | { kind: 'show-code'; instructions?: string; code: string }
+  | { kind: 'show-qr'; instructions?: string; qr: string }
+  | {
+      kind: 'user-input';
+      instructions?: string;
+      loginId: string;
+      stepId: string;
+      submitType: 'user_input';
+      fields: PairingField[];
+    }
+  | {
+      kind: 'display-wait';
+      instructions?: string;
+      loginId: string;
+      stepId: string;
+      submitType: 'display_and_wait';
+      displayType: string;
+      data?: string;
+      imageUrl?: string;
+    }
+  | {
+      kind: 'cookies';
+      instructions?: string;
+      loginId: string;
+      stepId: string;
+      submitType: 'cookies';
+      url?: string;
+      fields: PairingField[];
+    }
+  | { kind: 'complete'; instructions?: string; loginId?: string; userLoginId?: string };
+
+type PairingUiState = {
+  status: 'hidden' | 'loading' | 'active' | 'error' | 'done';
+  message?: string;
+  step?: PairingStep;
+  values?: Record<string, string>;
 };
 
 const isDesktopRuntime = (): boolean =>
@@ -340,6 +424,16 @@ const parseLoginFlows = (payload: unknown): BridgeLoginFlow[] => {
     }));
 };
 
+const pickPreferredLoginFlow = (flows: BridgeLoginFlow[]): BridgeLoginFlow => {
+  const qrFlow = flows.find((flow) => {
+    const haystack = `${flow.id} ${flow.name ?? ''} ${flow.description ?? ''}`.toLowerCase();
+    return /\b(qr|qrcode|qr_code)\b/.test(haystack);
+  });
+
+  if (qrFlow) return qrFlow;
+  return flows[0];
+};
+
 const buildDiscoveryEndpoints = (homeserver: string, userId: string): string[] => {
   const endpoints: string[] = [];
   const mxidServer = getMxIdServer(userId);
@@ -421,6 +515,147 @@ const getPairingQrFromResult = (result: unknown): string | undefined => {
   return candidates.find((entry) => typeof entry === 'string') as string | undefined;
 };
 
+const parsePairingFields = (value: unknown): PairingField[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item.id === 'string'))
+    .map((item) => ({
+      id: item.id as string,
+      name: (item.name as string | undefined) ?? (item.id as string),
+      type: (item.type as string | undefined) ?? 'text',
+      description: item.description as string | undefined,
+      pattern: item.pattern as string | undefined,
+      required: item.required as boolean | undefined,
+    }));
+};
+
+const getDesktopBridgeApi = (): CinnyDesktopBridgeApi | undefined => {
+  const runtimeWindow = window as Window & { cinnyDesktopBridge?: CinnyDesktopBridgeApi };
+  return runtimeWindow.cinnyDesktopBridge;
+};
+
+const parsePairingStep = (result: unknown): PairingStep | undefined => {
+  const directUrl = getPairingUrlFromResult(result);
+  if (directUrl) return { kind: 'open-url', url: directUrl };
+
+  const directQr = getPairingQrFromResult(result);
+  if (directQr) return { kind: 'show-qr', qr: directQr };
+
+  const directCode = getPairingCodeFromResult(result);
+  if (directCode) return { kind: 'show-code', code: directCode };
+
+  const data = asRecord(result);
+  if (!data) return undefined;
+
+  const type = data.type;
+  const loginId = data.login_id;
+  const stepId = data.step_id;
+  const instructions = data.instructions as string | undefined;
+
+  if (type === 'user_input' && typeof loginId === 'string' && typeof stepId === 'string') {
+    const userInput = asRecord(data.user_input);
+    const fields = parsePairingFields(userInput?.fields);
+    return {
+      kind: 'user-input',
+      instructions,
+      loginId,
+      stepId,
+      submitType: 'user_input',
+      fields,
+    };
+  }
+
+  if (type === 'display_and_wait' && typeof loginId === 'string' && typeof stepId === 'string') {
+    const displayData = asRecord(data.display_and_wait);
+    return {
+      kind: 'display-wait',
+      instructions,
+      loginId,
+      stepId,
+      submitType: 'display_and_wait',
+      displayType: (displayData?.type as string | undefined) ?? 'nothing',
+      data: displayData?.data as string | undefined,
+      imageUrl: displayData?.image_url as string | undefined,
+    };
+  }
+
+  if (type === 'cookies' && typeof loginId === 'string' && typeof stepId === 'string') {
+    const cookiesData = asRecord(data.cookies);
+    const fields = parsePairingFields(cookiesData?.fields);
+    return {
+      kind: 'cookies',
+      instructions,
+      loginId,
+      stepId,
+      submitType: 'cookies',
+      url: cookiesData?.url as string | undefined,
+      fields,
+    };
+  }
+
+  if (type === 'complete') {
+    const completeData = asRecord(data.complete);
+    return {
+      kind: 'complete',
+      instructions,
+      loginId: typeof loginId === 'string' ? loginId : undefined,
+      userLoginId: completeData?.user_login_id as string | undefined,
+    };
+  }
+
+  return undefined;
+};
+
+const getFieldInputType = (fieldType: string): string => {
+  if (fieldType === 'password') return 'password';
+  if (fieldType === 'email') return 'email';
+  if (fieldType === 'phone_number') return 'tel';
+  return 'text';
+};
+
+const submitPairingStep = async (
+  bridgeUrl: string,
+  userId: string,
+  accessToken: string | null,
+  loginId: string,
+  stepId: string,
+  stepType: 'user_input' | 'display_and_wait' | 'cookies',
+  body: Record<string, string>
+): Promise<unknown> => {
+  const base = bridgeUrl.replace(/\/+$/, '');
+  const paths = [
+    `/_matrix/provision/v3/login/step/${encodeURIComponent(loginId)}/${encodeURIComponent(
+      stepId
+    )}/${stepType}`,
+    `/v3/login/step/${encodeURIComponent(loginId)}/${encodeURIComponent(stepId)}/${stepType}`,
+  ];
+
+  for (const path of paths) {
+    const endpoint = `${base}${path}?user_id=${encodeURIComponent(userId)}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) continue;
+
+      const json = await getJsonIfAny(response);
+      if (json !== undefined) return json;
+      return {};
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error('Unable to submit pairing step.');
+};
+
 const startPairing = async (
   bridgeUrl: string,
   bridgeId: string,
@@ -446,7 +681,7 @@ const startPairing = async (
       const flows = parseLoginFlows(flowsPayload);
       if (flows.length === 0) continue;
 
-      const selectedFlow = flows[0];
+      const selectedFlow = pickPreferredLoginFlow(flows);
       const managerLikeStart = `${base}/_matrix/provision/v3/login/start/${encodeURIComponent(
         selectedFlow.id
       )}?user_id=${encodeURIComponent(userId)}`;
@@ -466,6 +701,7 @@ const startPairing = async (
           url: getPairingUrlFromResult(result),
           qr: getPairingQrFromResult(result),
           code: getPairingCodeFromResult(result),
+          raw: result,
         };
       }
     } catch {
@@ -499,6 +735,7 @@ const startPairing = async (
         url: getPairingUrlFromResult(result),
         qr: getPairingQrFromResult(result),
         code: getPairingCodeFromResult(result),
+        raw: result,
       };
     } catch {
       continue;
@@ -561,34 +798,40 @@ const listBridgeConnections = async (
 const deleteBridgeConnection = async (
   bridgeUrl: string,
   userId: string,
-  accessToken: string | null,
+  authTokens: (string | null | undefined)[],
   connectionId: string
 ): Promise<void> => {
   const base = bridgeUrl.replace(/\/+$/, '');
+  const tokenCandidates = Array.from(new Set(authTokens.filter((token) => typeof token === 'string')));
 
   for (const request of BRIDGE_LOGIN_DELETE_REQUESTS) {
-    const endpoint = `${base}${request.path.replace('{id}', encodeURIComponent(connectionId))}`;
+    const endpointBase = `${base}${request.path.replace('{id}', encodeURIComponent(connectionId))}`;
+    const endpointCandidates = [`${endpointBase}?user_id=${encodeURIComponent(userId)}`, endpointBase];
 
-    try {
-      const response = await fetch(endpoint, {
-        method: request.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body:
-          request.method === 'POST'
-            ? JSON.stringify({
-                login_id: connectionId,
-                account_id: connectionId,
-                user_id: userId,
-              })
-            : undefined,
-      });
+    for (const endpoint of endpointCandidates) {
+      for (const authToken of tokenCandidates) {
+        try {
+          const response = await fetch(endpoint, {
+            method: request.method,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+            },
+            body:
+              request.method === 'POST'
+                ? JSON.stringify({
+                    login_id: connectionId,
+                    account_id: connectionId,
+                    user_id: userId,
+                  })
+                : undefined,
+          });
 
-      if (response.ok) return;
-    } catch {
-      continue;
+          if (response.ok) return;
+        } catch {
+          continue;
+        }
+      }
     }
   }
 
@@ -606,9 +849,8 @@ export function Bridges({ requestClose }: BridgesProps) {
   const desktopRuntime = isDesktopRuntime();
   const accessToken = mx.getAccessToken() ?? null;
 
-  const [pairingStateByBridge, setPairingStateByBridge] = useState<
-    Record<string, { status: 'idle' | 'loading' | 'success' | 'error'; message?: string }>
-  >({});
+  const [pairingUiByBridge, setPairingUiByBridge] = useState<Record<string, PairingUiState>>({});
+  const pairingStateByBridge = pairingUiByBridge;
   const [connectionsByBridge, setConnectionsByBridge] = useState<Record<string, BridgeConnection[]>>({});
   const [connectionsLoadingByBridge, setConnectionsLoadingByBridge] = useState<Record<string, boolean>>({});
   const [connectionsMessageByBridge, setConnectionsMessageByBridge] = useState<
@@ -657,48 +899,74 @@ export function Bridges({ requestClose }: BridgesProps) {
     });
   }, [refreshBridgeConnections, state]);
 
+  const closePairingPanel = useCallback((bridgeId: string) => {
+    setPairingUiByBridge((prev) => ({
+      ...prev,
+      [bridgeId]: { status: 'hidden' },
+    }));
+  }, []);
+
+  const handlePairingFieldChange = useCallback(
+    (bridgeId: string, fieldId: string, value: string) => {
+      setPairingUiByBridge((prev) => {
+        const prevState = prev[bridgeId];
+        return {
+          ...prev,
+          [bridgeId]: {
+            ...(prevState ?? { status: 'active' as const }),
+            values: {
+              ...(prevState?.values ?? {}),
+              [fieldId]: value,
+            },
+          },
+        };
+      });
+    },
+    []
+  );
+
   const handleStartPairing = useCallback(
     async (bridgeId: string, bridgeTitle: string, bridgeUrl: string) => {
-      setPairingStateByBridge((prev) => ({
+      setPairingUiByBridge((prev) => ({
         ...prev,
         [bridgeId]: { status: 'loading', message: 'Starting pairing…' },
       }));
 
       try {
-        const result = await startPairing(
-          bridgeUrl,
-          bridgeId,
-          userId,
-          accessToken,
-          homeserver
-        );
+        const result = await startPairing(bridgeUrl, bridgeId, userId, accessToken, homeserver);
+        const step = parsePairingStep(result.raw ?? result);
 
-        if (result.url) {
-          window.open(result.url, '_blank', 'noopener,noreferrer');
-          setPairingStateByBridge((prev) => ({
+        if (!step) {
+          setPairingUiByBridge((prev) => ({
             ...prev,
-            [bridgeId]: { status: 'success', message: `${bridgeTitle} pairing started.` },
+            [bridgeId]: {
+              status: 'error',
+              message: `${bridgeTitle} returned an unsupported pairing payload.`,
+            },
           }));
           return;
         }
 
-        if (result.code || result.qr) {
-          const detail = result.code ? `Code: ${result.code}` : 'QR pairing received.';
-          setPairingStateByBridge((prev) => ({
-            ...prev,
-            [bridgeId]: { status: 'success', message: detail },
-          }));
-          return;
-        }
-
-        setPairingStateByBridge((prev) => ({
+        setPairingUiByBridge((prev) => ({
           ...prev,
-          [bridgeId]: { status: 'success', message: `${bridgeTitle} pairing requested.` },
+          [bridgeId]: {
+            status: step.kind === 'complete' ? 'done' : 'active',
+            message: `${bridgeTitle} pairing in progress.`,
+            step,
+            values:
+              step.kind === 'user-input'
+                ? Object.fromEntries(step.fields.map((field) => [field.id, '']))
+                : step.kind === 'cookies'
+                ? Object.fromEntries(step.fields.map((field) => [field.id, '']))
+                : {},
+          },
         }));
 
-        await refreshBridgeConnections(bridgeId, bridgeUrl);
+        if (step.kind === 'open-url') {
+          window.open(step.url, '_blank', 'noopener,noreferrer');
+        }
       } catch (error) {
-        setPairingStateByBridge((prev) => ({
+        setPairingUiByBridge((prev) => ({
           ...prev,
           [bridgeId]: {
             status: 'error',
@@ -707,7 +975,191 @@ export function Bridges({ requestClose }: BridgesProps) {
         }));
       }
     },
-    [accessToken, homeserver, refreshBridgeConnections, userId]
+    [accessToken, homeserver, userId]
+  );
+
+  const handleSubmitPairingStep = useCallback(
+    async (bridgeId: string, bridgeUrl: string) => {
+      const session = pairingUiByBridge[bridgeId];
+      const step = session?.step;
+      if (!session || !step) return;
+
+      if (step.kind !== 'user-input' && step.kind !== 'display-wait' && step.kind !== 'cookies') return;
+
+      setPairingUiByBridge((prev) => ({
+        ...prev,
+        [bridgeId]: {
+          ...(prev[bridgeId] ?? { status: 'loading' as const }),
+          status: 'loading',
+          message: 'Submitting pairing step…',
+        },
+      }));
+
+      try {
+        const body =
+          step.kind === 'user-input' || step.kind === 'cookies' ? session.values ?? {} : {};
+        const response = await submitPairingStep(
+          bridgeUrl,
+          userId,
+          accessToken,
+          step.loginId,
+          step.stepId,
+          step.submitType,
+          body
+        );
+        const nextStep = parsePairingStep(response);
+
+        if (!nextStep) {
+          setPairingUiByBridge((prev) => ({
+            ...prev,
+            [bridgeId]: {
+              ...(prev[bridgeId] ?? { status: 'error' as const }),
+              status: 'error',
+              message: 'Bridge returned an unsupported next step.',
+            },
+          }));
+          return;
+        }
+
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'active' as const }),
+            status: nextStep.kind === 'complete' ? 'done' : 'active',
+            message:
+              nextStep.kind === 'complete'
+                ? 'Pairing complete.'
+                : 'Continue the pairing flow below.',
+            step: nextStep,
+            values:
+              nextStep.kind === 'user-input'
+                ? Object.fromEntries(nextStep.fields.map((field) => [field.id, '']))
+                : nextStep.kind === 'cookies'
+                ? Object.fromEntries(nextStep.fields.map((field) => [field.id, '']))
+                : {},
+          },
+        }));
+
+        if (nextStep.kind === 'open-url') {
+          window.open(nextStep.url, '_blank', 'noopener,noreferrer');
+        }
+
+        if (nextStep.kind === 'complete') {
+          await refreshBridgeConnections(bridgeId, bridgeUrl);
+        }
+      } catch (error) {
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'error' as const }),
+            status: 'error',
+            message: toErrorMessage(error),
+          },
+        }));
+      }
+    },
+    [accessToken, pairingUiByBridge, refreshBridgeConnections, userId]
+  );
+
+  useEffect(() => {
+    const timers: number[] = [];
+
+    BRIDGES.forEach((bridge) => {
+      const session = pairingUiByBridge[bridge.id];
+      if (session?.status !== 'active') return;
+      if (session.step?.kind !== 'display-wait') return;
+
+      const bridgeUrl =
+        state.status === AsyncStatus.Success ? findBridgeUrl(state.data.bridges, bridge.id) : undefined;
+      if (!bridgeUrl) return;
+
+      const timerId = window.setTimeout(() => {
+        handleSubmitPairingStep(bridge.id, bridgeUrl);
+      }, 800);
+      timers.push(timerId);
+    });
+
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [handleSubmitPairingStep, pairingUiByBridge, state]);
+
+  const handleDesktopCookieCapture = useCallback(
+    async (bridgeId: string, bridgeUrl: string) => {
+      const session = pairingUiByBridge[bridgeId];
+      const step = session?.step;
+      if (!session || !step || step.kind !== 'cookies') return;
+
+      const desktopApi = getDesktopBridgeApi();
+      if (!desktopApi?.openBridgeCookieLogin) {
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'error' as const }),
+            status: 'error',
+            message:
+              'Desktop cookie capture API is unavailable in this runtime. Update the desktop app integration.',
+          },
+        }));
+        return;
+      }
+
+      if (!step.url) {
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'error' as const }),
+            status: 'error',
+            message: 'This cookie step does not include a login URL.',
+          },
+        }));
+        return;
+      }
+
+      setPairingUiByBridge((prev) => ({
+        ...prev,
+        [bridgeId]: {
+          ...(prev[bridgeId] ?? { status: 'loading' as const }),
+          status: 'loading',
+          message: 'Opening desktop login window…',
+        },
+      }));
+
+      try {
+        const captured = await desktopApi.openBridgeCookieLogin({
+          url: step.url,
+          fields: step.fields.map((field) => ({
+            id: field.id,
+            required: Boolean(field.required),
+          })),
+        });
+
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'active' as const, step }),
+            status: 'active',
+            message: 'Cookies captured from desktop login. Submitting…',
+            values: {
+              ...(prev[bridgeId]?.values ?? {}),
+              ...(captured.cookies ?? {}),
+            },
+          },
+        }));
+
+        await handleSubmitPairingStep(bridgeId, bridgeUrl);
+      } catch (error) {
+        setPairingUiByBridge((prev) => ({
+          ...prev,
+          [bridgeId]: {
+            ...(prev[bridgeId] ?? { status: 'error' as const }),
+            status: 'error',
+            message: toErrorMessage(error),
+          },
+        }));
+      }
+    },
+    [handleSubmitPairingStep, pairingUiByBridge]
   );
 
   const handleDeleteConnection = useCallback(
@@ -715,13 +1167,18 @@ export function Bridges({ requestClose }: BridgesProps) {
       setConnectionsMessageByBridge((prev) => ({ ...prev, [bridgeId]: undefined }));
 
       try {
-        await deleteBridgeConnection(bridgeUrl, userId, accessToken, connectionId);
+        const openId = await mx
+          .getOpenIdToken()
+          .then((token) => `openid:${token.access_token}`)
+          .catch(() => null);
+
+        await deleteBridgeConnection(bridgeUrl, userId, [accessToken, openId], connectionId);
         await refreshBridgeConnections(bridgeId, bridgeUrl);
       } catch (error) {
         setConnectionsMessageByBridge((prev) => ({ ...prev, [bridgeId]: toErrorMessage(error) }));
       }
     },
-    [accessToken, refreshBridgeConnections, userId]
+    [accessToken, mx, refreshBridgeConnections, userId]
   );
 
   const toggleSetup = (bridgeId: string, connectionId: string) => {
@@ -823,18 +1280,25 @@ export function Bridges({ requestClose }: BridgesProps) {
                         ? findBridgeUrl(state.data.bridges, bridge.id)
                         : undefined;
 
-                    const pairingState = pairingStateByBridge[bridge.id];
+                    const pairingSession = pairingUiByBridge[bridge.id];
                     const desktopOnlyLocked = Boolean(bridge.desktopOnlyPairing && !desktopRuntime);
                     const bridgeConnections = connectionsByBridge[bridge.id] ?? [];
                     const bridgeConnectionsLoading = connectionsLoadingByBridge[bridge.id];
                     const bridgeConnectionsMessage = connectionsMessageByBridge[bridge.id];
+                    const pairingMessage = pairingSession?.message;
+                    const pairingStep = pairingSession?.step;
+                    const pairingPanelVisible =
+                      pairingSession?.status === 'loading' ||
+                      pairingSession?.status === 'active' ||
+                      pairingSession?.status === 'error' ||
+                      pairingSession?.status === 'done';
 
                     return (
                       <Box key={bridge.id} direction="Column" gap="200">
                         <SettingTile
                           title={bridge.title}
                           description={
-                            pairingState?.message ??
+                            pairingMessage ??
                             bridgeConnectionsMessage ??
                             (desktopOnlyLocked
                               ? 'Unsupported on web, use desktop app instead.'
@@ -851,16 +1315,27 @@ export function Bridges({ requestClose }: BridgesProps) {
                                   fill={desktopOnlyLocked ? 'Soft' : 'Solid'}
                                   size="300"
                                   radii="300"
-                                  disabled={desktopOnlyLocked || pairingState?.status === 'loading'}
+                                  disabled={desktopOnlyLocked || pairingSession?.status === 'loading'}
                                   onClick={() => handleStartPairing(bridge.id, bridge.title, bridgeUrl)}
                                   before={
-                                    pairingState?.status === 'loading' ? (
+                                    pairingSession?.status === 'loading' ? (
                                       <Spinner size="100" variant="Primary" fill="Solid" />
                                     ) : undefined
                                   }
                                 >
                                   <Text size="B300">{desktopOnlyLocked ? 'Desktop Only' : 'Pair'}</Text>
                                 </Button>
+                                {pairingPanelVisible && (
+                                  <Button
+                                    variant="Secondary"
+                                    fill="Soft"
+                                    size="300"
+                                    radii="300"
+                                    onClick={() => closePairingPanel(bridge.id)}
+                                  >
+                                    <Text size="B300">Close Pairing</Text>
+                                  </Button>
+                                )}
                                 <Button
                                   variant="Secondary"
                                   fill="Soft"
@@ -879,6 +1354,279 @@ export function Bridges({ requestClose }: BridgesProps) {
                             )
                           }
                         />
+
+                        {bridgeUrl && pairingPanelVisible && (
+                          <Box
+                            direction="Column"
+                            gap="200"
+                            style={{
+                              padding: config.space.S200,
+                              borderRadius: config.radii.R300,
+                              background: 'rgba(255 255 255 / 0.03)',
+                              marginLeft: config.space.S100,
+                            }}
+                          >
+                            {pairingSession?.status === 'loading' && (
+                              <Box alignItems="Center" gap="100">
+                                <Spinner size="100" />
+                                <Text size="T200" priority="300">
+                                  {pairingSession.message ?? 'Loading pairing step…'}
+                                </Text>
+                              </Box>
+                            )}
+
+                            {pairingStep?.instructions && (
+                              <Text size="T200" priority="300">
+                                {pairingStep.instructions}
+                              </Text>
+                            )}
+
+                            {pairingStep?.kind === 'open-url' && (
+                              <Box direction="Column" gap="100">
+                                <Text size="T200" priority="300">
+                                  Open the login page and finish pairing.
+                                </Text>
+                                <Box alignItems="Center" gap="100">
+                                  <Button
+                                    variant="Primary"
+                                    fill="Solid"
+                                    size="300"
+                                    radii="300"
+                                    onClick={() =>
+                                      window.open(pairingStep.url, '_blank', 'noopener,noreferrer')
+                                    }
+                                  >
+                                    <Text size="B300">Open Login Page</Text>
+                                  </Button>
+                                  <Button
+                                    variant="Secondary"
+                                    fill="Soft"
+                                    size="300"
+                                    radii="300"
+                                    onClick={() => refreshBridgeConnections(bridge.id, bridgeUrl)}
+                                  >
+                                    <Text size="B300">Refresh Status</Text>
+                                  </Button>
+                                </Box>
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'show-code' && (
+                              <Box direction="Column" gap="100">
+                                <Text size="T200" priority="300">
+                                  Use this code in the bridge login screen:
+                                </Text>
+                                <Box
+                                  as="pre"
+                                  style={{
+                                    margin: 0,
+                                    padding: config.space.S200,
+                                    borderRadius: config.radii.R300,
+                                    background: 'rgba(0 0 0 / 0.35)',
+                                    whiteSpace: 'pre-wrap',
+                                  }}
+                                >
+                                  {pairingStep.code}
+                                </Box>
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'show-qr' && (
+                              <Box direction="Column" gap="100">
+                                <Text size="T200" priority="300">
+                                  Scan this QR code to pair:
+                                </Text>
+                                <Box
+                                  style={{
+                                    padding: config.space.S200,
+                                    borderRadius: config.radii.R300,
+                                    background: 'rgba(255 255 255 / 0.04)',
+                                    width: 'fit-content',
+                                  }}
+                                >
+                                  <QRCodeSVG
+                                    value={pairingStep.qr}
+                                    size={220}
+                                    bgColor="#ffffff"
+                                    fgColor="#000000"
+                                    includeMargin
+                                  />
+                                </Box>
+                                <Text size="T200" priority="300">
+                                  Waiting for scan confirmation…
+                                </Text>
+                                <Box
+                                  as="pre"
+                                  style={{
+                                    margin: 0,
+                                    padding: config.space.S200,
+                                    borderRadius: config.radii.R300,
+                                    background: 'rgba(0 0 0 / 0.35)',
+                                    whiteSpace: 'pre-wrap',
+                                    overflowWrap: 'anywhere',
+                                  }}
+                                >
+                                  {pairingStep.qr}
+                                </Box>
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'user-input' && (
+                              <Box direction="Column" gap="200">
+                                {pairingStep.fields.map((field) => (
+                                  <Box key={`${bridge.id}:${field.id}`} direction="Column" gap="100">
+                                    <Text size="T200" priority="300">
+                                      {field.name}
+                                    </Text>
+                                    <Input
+                                      size="300"
+                                      variant="Background"
+                                      radii="300"
+                                      type={getFieldInputType(field.type)}
+                                      value={pairingSession?.values?.[field.id] ?? ''}
+                                      required={field.required}
+                                      pattern={field.pattern}
+                                      onChange={(evt) =>
+                                        handlePairingFieldChange(
+                                          bridge.id,
+                                          field.id,
+                                          evt.currentTarget.value
+                                        )
+                                      }
+                                    />
+                                  </Box>
+                                ))}
+                                <Button
+                                  variant="Primary"
+                                  fill="Solid"
+                                  size="300"
+                                  radii="300"
+                                  disabled={pairingSession?.status === 'loading'}
+                                  onClick={() => handleSubmitPairingStep(bridge.id, bridgeUrl)}
+                                >
+                                  <Text size="B300">Submit</Text>
+                                </Button>
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'display-wait' && (
+                              <Box direction="Column" gap="100">
+                                {pairingStep.displayType === 'emoji' && pairingStep.imageUrl && (
+                                  <img
+                                    alt="Pairing emoji"
+                                    src={pairingStep.imageUrl}
+                                    style={{ width: 128, height: 128, borderRadius: 8 }}
+                                  />
+                                )}
+                                {pairingStep.displayType === 'qr' && pairingStep.data && (
+                                  <Box
+                                    style={{
+                                      padding: config.space.S200,
+                                      borderRadius: config.radii.R300,
+                                      background: 'rgba(255 255 255 / 0.04)',
+                                      width: 'fit-content',
+                                    }}
+                                  >
+                                    <QRCodeSVG
+                                      value={pairingStep.data}
+                                      size={220}
+                                      bgColor="#ffffff"
+                                      fgColor="#000000"
+                                      includeMargin
+                                    />
+                                  </Box>
+                                )}
+                                {pairingStep.data && (
+                                  <Text size="T200" priority="300">
+                                    {pairingStep.data}
+                                  </Text>
+                                )}
+                                <Text size="T200" priority="300">
+                                  Waiting for completion… this updates automatically after scan.
+                                </Text>
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'cookies' && (
+                              <Box direction="Column" gap="200">
+                                {!desktopRuntime ? (
+                                  <Text size="T200" priority="300">
+                                    Cookie extraction login is only available on desktop.
+                                  </Text>
+                                ) : (
+                                  <>
+                                    <Text size="T200" priority="300">
+                                      This bridge requires cookie extraction. Use desktop login capture or enter
+                                      cookie fields manually.
+                                    </Text>
+                                    {pairingStep.fields.map((field) => (
+                                      <Box key={`${bridge.id}:cookie:${field.id}`} direction="Column" gap="100">
+                                        <Text size="T200" priority="300">
+                                          {field.name}
+                                        </Text>
+                                        <Input
+                                          size="300"
+                                          variant="Background"
+                                          radii="300"
+                                          type={getFieldInputType(field.type)}
+                                          value={pairingSession?.values?.[field.id] ?? ''}
+                                          required={field.required}
+                                          pattern={field.pattern}
+                                          onChange={(evt) =>
+                                            handlePairingFieldChange(
+                                              bridge.id,
+                                              field.id,
+                                              evt.currentTarget.value
+                                            )
+                                          }
+                                        />
+                                      </Box>
+                                    ))}
+                                    <Box alignItems="Center" gap="100">
+                                      <Button
+                                        variant="Primary"
+                                        fill="Solid"
+                                        size="300"
+                                        radii="300"
+                                        disabled={pairingSession?.status === 'loading' || !pairingStep.url}
+                                        onClick={() => handleDesktopCookieCapture(bridge.id, bridgeUrl)}
+                                      >
+                                        <Text size="B300">Capture Cookies (Desktop)</Text>
+                                      </Button>
+                                      <Button
+                                        variant="Secondary"
+                                        fill="Soft"
+                                        size="300"
+                                        radii="300"
+                                        disabled={pairingSession?.status === 'loading'}
+                                        onClick={() => handleSubmitPairingStep(bridge.id, bridgeUrl)}
+                                      >
+                                        <Text size="B300">Submit Cookies</Text>
+                                      </Button>
+                                    </Box>
+                                  </>
+                                )}
+                              </Box>
+                            )}
+
+                            {pairingStep?.kind === 'complete' && (
+                              <Box direction="Column" gap="100">
+                                <Badge variant="Success" fill="Soft" radii="Pill" size="400">
+                                  <Text size="L400">Pairing Complete</Text>
+                                </Badge>
+                                <Button
+                                  variant="Secondary"
+                                  fill="Soft"
+                                  size="300"
+                                  radii="300"
+                                  onClick={() => refreshBridgeConnections(bridge.id, bridgeUrl)}
+                                >
+                                  <Text size="B300">Refresh Connections</Text>
+                                </Button>
+                              </Box>
+                            )}
+                          </Box>
+                        )}
 
                         {bridgeUrl && (
                           <Box direction="Column" gap="100" style={{ paddingLeft: config.space.S100 }}>
