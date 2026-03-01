@@ -430,6 +430,56 @@ const getRoomUnreadInfo = (room: Room, scrollTo = false) => {
   };
 };
 
+const BRIDGE_TIMER_EVENT = 'com.beeper.message_timer';
+
+const readNumericContent = (content: IContent, keys: string[]): number | undefined => {
+  for (const key of keys) {
+    const value = content[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+};
+
+const formatBridgeTimer = (seconds: number): string => {
+  if (!seconds || seconds <= 0) return 'off';
+  if (seconds % (60 * 60 * 24 * 30) === 0) return `${seconds / (60 * 60 * 24 * 30)} month(s)`;
+  if (seconds % (60 * 60 * 24 * 7) === 0) return `${seconds / (60 * 60 * 24 * 7)} week(s)`;
+  if (seconds % (60 * 60 * 24) === 0) return `${seconds / (60 * 60 * 24)} day(s)`;
+  if (seconds % (60 * 60) === 0) return `${seconds / (60 * 60)} hour(s)`;
+  if (seconds % 60 === 0) return `${seconds / 60} minute(s)`;
+  return `${seconds} second(s)`;
+};
+
+const getBridgeEventSummary = (mEvent: MatrixEvent): string | undefined => {
+  const eventType = mEvent.getType();
+  const content = mEvent.getContent<IContent>();
+
+  if (eventType === BRIDGE_TIMER_EVENT) {
+    const timer = readNumericContent(content, ['seconds', 'timer', 'timeout']) ?? 0;
+    return `updated disappearing messages timer to ${formatBridgeTimer(timer)}`;
+  }
+
+  if (eventType.startsWith('com.beeper.chat_lock')) {
+    const locked =
+      (typeof content.locked === 'boolean' ? content.locked : undefined) ??
+      (typeof content.enabled === 'boolean' ? content.enabled : undefined) ??
+      true;
+    return locked ? 'locked the chat' : 'unlocked the chat';
+  }
+
+  if (eventType.startsWith('com.beeper.') || eventType.startsWith('fi.mau.')) {
+    const action =
+      (typeof content.action === 'string' && content.action) ||
+      (typeof content.status === 'string' && content.status) ||
+      (typeof content.event === 'string' && content.event);
+    return action
+      ? `updated bridge state (${eventType}: ${action})`
+      : `updated bridge state (${eventType})`;
+  }
+
+  return undefined;
+};
+
 export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimelineProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
@@ -1471,7 +1521,8 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       },
     },
     (mEventId, mEvent, item) => {
-      if (!showHiddenEvents) return null;
+      const bridgeSummary = getBridgeEventSummary(mEvent);
+      if (!showHiddenEvents && !bridgeSummary) return null;
       const highlighted = focusItem?.index === item && focusItem.highlight;
       const senderId = mEvent.getSender() ?? '';
       const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
@@ -1506,9 +1557,13 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
               <Box grow="Yes" direction="Column">
                 <Text size="T300" priority="300">
                   <b>{senderName}</b>
-                  {' sent '}
-                  <code className={customHtmlCss.Code}>{mEvent.getType()}</code>
-                  {' state event'}
+                  {bridgeSummary ? ` ${bridgeSummary}` : ' sent '}
+                  {!bridgeSummary && (
+                    <>
+                      <code className={customHtmlCss.Code}>{mEvent.getType()}</code>
+                      {' state event'}
+                    </>
+                  )}
                 </Text>
               </Box>
             }
@@ -1517,7 +1572,8 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       );
     },
     (mEventId, mEvent, item) => {
-      if (!showHiddenEvents) return null;
+      const bridgeSummary = getBridgeEventSummary(mEvent);
+      if (!showHiddenEvents && !bridgeSummary) return null;
       if (Object.keys(mEvent.getContent()).length === 0) return null;
       if (mEvent.getRelation()) return null;
       if (mEvent.isRedaction()) return null;
@@ -1556,9 +1612,13 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
               <Box grow="Yes" direction="Column">
                 <Text size="T300" priority="300">
                   <b>{senderName}</b>
-                  {' sent '}
-                  <code className={customHtmlCss.Code}>{mEvent.getType()}</code>
-                  {' event'}
+                  {bridgeSummary ? ` ${bridgeSummary}` : ' sent '}
+                  {!bridgeSummary && (
+                    <>
+                      <code className={customHtmlCss.Code}>{mEvent.getType()}</code>
+                      {' event'}
+                    </>
+                  )}
                 </Text>
               </Box>
             }

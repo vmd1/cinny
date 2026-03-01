@@ -202,6 +202,7 @@ export function Search({ requestClose }: SearchProps) {
       resetSearch();
       return;
     }
+
     search(value);
   };
 

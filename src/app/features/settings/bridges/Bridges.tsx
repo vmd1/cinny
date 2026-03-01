@@ -537,22 +537,63 @@ const getDesktopBridgeApi = (): CinnyDesktopBridgeApi | undefined => {
 };
 
 const parsePairingStep = (result: unknown): PairingStep | undefined => {
-  const directUrl = getPairingUrlFromResult(result);
-  if (directUrl) return { kind: 'open-url', url: directUrl };
-
-  const directQr = getPairingQrFromResult(result);
-  if (directQr) return { kind: 'show-qr', qr: directQr };
-
-  const directCode = getPairingCodeFromResult(result);
-  if (directCode) return { kind: 'show-code', code: directCode };
-
   const data = asRecord(result);
-  if (!data) return undefined;
+  if (!data) {
+    const directUrl = getPairingUrlFromResult(result);
+    if (directUrl) return { kind: 'open-url', url: directUrl };
+
+    const directQr = getPairingQrFromResult(result);
+    if (directQr) return { kind: 'show-qr', qr: directQr };
+
+    const directCode = getPairingCodeFromResult(result);
+    if (directCode) return { kind: 'show-code', code: directCode };
+
+    return undefined;
+  }
 
   const type = data.type;
   const loginId = data.login_id;
   const stepId = data.step_id;
   const instructions = data.instructions as string | undefined;
+  const directUrl = getPairingUrlFromResult(result);
+  const directQr = getPairingQrFromResult(result);
+  const directCode = getPairingCodeFromResult(result);
+
+  if (typeof loginId === 'string' && typeof stepId === 'string' && type === 'display_and_wait') {
+    const displayData = asRecord(data.display_and_wait);
+    const displayType = (displayData?.type as string | undefined) ?? 'nothing';
+    const displayValue =
+      (displayData?.data as string | undefined) ?? (displayType === 'qr' ? directQr : directCode);
+
+    return {
+      kind: 'display-wait',
+      instructions,
+      loginId,
+      stepId,
+      submitType: 'display_and_wait',
+      displayType,
+      data: displayValue,
+      imageUrl: displayData?.image_url as string | undefined,
+    };
+  }
+
+  if (typeof loginId === 'string' && typeof stepId === 'string' && !type && (directQr || directCode)) {
+    return {
+      kind: 'display-wait',
+      instructions,
+      loginId,
+      stepId,
+      submitType: 'display_and_wait',
+      displayType: directQr ? 'qr' : 'code',
+      data: directQr ?? directCode,
+    };
+  }
+
+  if (directUrl) return { kind: 'open-url', instructions, url: directUrl };
+
+  if (directQr) return { kind: 'show-qr', instructions, qr: directQr };
+
+  if (directCode) return { kind: 'show-code', instructions, code: directCode };
 
   if (type === 'user_input' && typeof loginId === 'string' && typeof stepId === 'string') {
     const userInput = asRecord(data.user_input);
@@ -564,20 +605,6 @@ const parsePairingStep = (result: unknown): PairingStep | undefined => {
       stepId,
       submitType: 'user_input',
       fields,
-    };
-  }
-
-  if (type === 'display_and_wait' && typeof loginId === 'string' && typeof stepId === 'string') {
-    const displayData = asRecord(data.display_and_wait);
-    return {
-      kind: 'display-wait',
-      instructions,
-      loginId,
-      stepId,
-      submitType: 'display_and_wait',
-      displayType: (displayData?.type as string | undefined) ?? 'nothing',
-      data: displayData?.data as string | undefined,
-      imageUrl: displayData?.image_url as string | undefined,
     };
   }
 
@@ -1455,19 +1482,6 @@ export function Bridges({ requestClose }: BridgesProps) {
                                 <Text size="T200" priority="300">
                                   Waiting for scan confirmation…
                                 </Text>
-                                <Box
-                                  as="pre"
-                                  style={{
-                                    margin: 0,
-                                    padding: config.space.S200,
-                                    borderRadius: config.radii.R300,
-                                    background: 'rgba(0 0 0 / 0.35)',
-                                    whiteSpace: 'pre-wrap',
-                                    overflowWrap: 'anywhere',
-                                  }}
-                                >
-                                  {pairingStep.qr}
-                                </Box>
                               </Box>
                             )}
 
@@ -1536,7 +1550,7 @@ export function Bridges({ requestClose }: BridgesProps) {
                                     />
                                   </Box>
                                 )}
-                                {pairingStep.data && (
+                                {pairingStep.data && pairingStep.displayType !== 'qr' && (
                                   <Text size="T200" priority="300">
                                     {pairingStep.data}
                                   </Text>

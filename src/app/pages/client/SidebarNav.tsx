@@ -29,6 +29,7 @@ export function SidebarNav() {
           <Scroll ref={scrollRef} variant="Background" size="0">
             <SidebarStack>
               <HomeTab />
+              <SearchTab />
               <DirectTab />
             </SidebarStack>
             <SpaceTabs scrollRef={scrollRef} />
@@ -43,7 +44,6 @@ export function SidebarNav() {
           <>
             <SidebarStackSeparator />
             <SidebarStack>
-              <SearchTab />
               <UnverifiedTab />
               <InboxTab />
               <SettingsTab />

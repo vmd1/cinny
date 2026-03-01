@@ -365,6 +365,8 @@ export function RoomNavItem({
   };
 
   const optionsVisible = hover || !!menuAnchor;
+  const roomRowHeight = 76;
+  const avatarSizePx = Math.round(roomRowHeight * 0.6);
 
   return (
     <NavItem
@@ -373,7 +375,7 @@ export function RoomNavItem({
       highlight={unread !== undefined}
       aria-selected={selected}
       data-hover={!!menuAnchor}
-      style={{ minHeight: toRem(76) }}
+      style={{ minHeight: toRem(roomRowHeight) }}
       onContextMenu={handleContextMenu}
       {...hoverProps}
       {...focusWithinProps}
@@ -381,7 +383,7 @@ export function RoomNavItem({
       <NavLink to={linkPath}>
         <NavItemContent>
           <Box as="span" grow="Yes" alignItems="Center" gap="200">
-            <Avatar size="300" radii="Pill">
+            <Avatar style={{ width: toRem(avatarSizePx), height: toRem(avatarSizePx) }} radii="Pill">
               {showAvatar ? (
                 <RoomAvatar
                   roomId={room.roomId}
