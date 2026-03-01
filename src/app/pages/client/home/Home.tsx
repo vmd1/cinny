@@ -171,10 +171,12 @@ function HomeSectionFilters({
           key={item.section}
           variant={section === item.section ? 'Primary' : 'SurfaceVariant'}
           radii="Pill"
-          size="400"
+          size="300"
           onClick={() => onSectionChange(item.section)}
         >
-          {item.label}
+          <Text as="span" size="T200" style={{ fontWeight: config.fontWeight.W400 }}>
+            {item.label}
+          </Text>
         </Chip>
       ))}
     </Box>

@@ -11,7 +11,7 @@ A hosted web app is currently not available, see Self-hosting below.
 A desktop app is incoming, please wait.
 
 ## Self-hosting
-To host Cinny on your own, simply pull the docker image from GitHub Container Registry.
+To host Finny on your own, simply pull the docker image from GitHub Container Registry.
 
 * The default homeservers and explore pages are defined in [`config.json`](config.json).
 
@@ -40,12 +40,12 @@ npm run build # Compiles the app into the dist/ directory
 This repository includes a Dockerfile, which builds the application from source and serves it with Nginx on port 80. To
 use this locally, you can build the container like so:
 ```
-docker build -t cinny:latest .
+docker build -t finny:latest .
 ```
 
 You can then run the container you've built with a command similar to this:
 ```
-docker run -p 8080:80 cinny:latest
+docker run -p 8080:80 finny:latest
 ```
 
 This will forward your `localhost` port 8080 to the container's port 80. You can visit the app in your browser by navigating to `http://localhost:8080`.

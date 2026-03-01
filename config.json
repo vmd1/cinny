@@ -1,10 +1,11 @@
 {
-  "defaultHomeserver": 1,
+  "defaultHomeserver": 4,
   "homeserverList": [
     "converser.eu",
     "matrix.org",
     "mozilla.org",
     "unredacted.org",
+    "vmd1.dev",
     "xmr.se"
   ],
   "allowCustomHomeservers": true,

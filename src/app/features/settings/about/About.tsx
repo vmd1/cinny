@@ -39,13 +39,13 @@ export function About({ requestClose }: AboutProps) {
                   <img
                     style={{ width: toRem(60), height: toRem(60) }}
                     src={CinnySVG}
-                    alt="Cinny logo"
+                    alt="Finny logo"
                   />
                 </Box>
                 <Box direction="Column" gap="300">
                   <Box direction="Column" gap="100">
                     <Box gap="100" alignItems="End">
-                      <Text size="H3">Cinny</Text>
+                      <Text size="H3">Finny</Text>
                       <Text size="T200">v4.10.5</Text>
                     </Box>
                     <Text>Yet another matrix client.</Text>
