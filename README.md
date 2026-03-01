@@ -1,4 +1,4 @@
-# Cinny
+# Finny
 
 Finny is a fork of Cinny, a Matrix client focusing primarily on simple, elegant and secure interface. The main goal is to have an instant messaging application that is easy on people and has a modern touch.
 
