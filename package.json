@@ -31,7 +31,7 @@
       "package.json"
     ],
     "win": {
-      "icon": "public/favicon.ico",
+      "icon": "electron/icon.ico",
       "target": [
         "nsis"
       ]
