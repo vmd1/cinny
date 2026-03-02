@@ -108,6 +108,12 @@ button {
   overflow: visible;
   -webkit-appearance: button;
 }
+
+._1bv8u1w6 {
+  font-size: var(--_164xfgec);
+  font-weight: var(--_164xfge1k);
+}
+
 textarea,
 input,
 input[type],

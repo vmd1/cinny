@@ -174,9 +174,7 @@ function HomeSectionFilters({
           size="400"
           onClick={() => onSectionChange(item.section)}
         >
-          <Text as="span" size="T200" style={{ fontWeight: config.fontWeight.W400 }}>
-            {item.label}
-          </Text>
+          {item.label}
         </Chip>
       ))}
     </Box>
