@@ -1,12 +1,17 @@
 name: Windows Build
 
 on:
+  workflow_dispatch:
   push:
+    branches:
+      - dev
+      - main
+  pull_request:
 
 
 jobs:
   build-windows:
-    name: Build on Windows
+    name: Build Windows EXE
     runs-on: windows-latest
 
     steps:
@@ -22,12 +27,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
-        run: npm run build
+      - name: Build Windows executable
+        run: npm run build:win
 
-      - name: Upload build artifact
+      - name: Upload Windows executable artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: finny-windows-dist
-          path: dist
+          name: finny-windows-exe
+          path: |
+            release/**/*.exe
+            release/**/*.yml
           if-no-files-found: error

@@ -2,7 +2,7 @@
   "name": "finny",
   "version": "4.10.5",
   "description": "Yet another matrix client",
-  "main": "index.js",
+  "main": "electron/main.cjs",
   "type": "module",
   "engines": {
     "node": ">=16.0.0"
@@ -10,11 +10,31 @@
   "scripts": {
     "start": "vite",
     "build": "vite build",
+    "desktop:start": "electron .",
+    "build:desktop:web": "vite build --base ./",
+    "build:win": "npm run build:desktop:web && electron-builder --win nsis --x64",
     "lint": "yarn check:eslint && yarn check:prettier",
     "check:eslint": "eslint src/*",
     "check:prettier": "prettier --check .",
     "fix:prettier": "prettier --write .",
     "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "dev.finny.app",
+    "productName": "Finny",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   },
   "keywords": [],
   "author": "Ajay Bura",
@@ -94,6 +114,8 @@
     "@typescript-eslint/parser": "5.46.1",
     "@vitejs/plugin-react": "4.2.0",
     "buffer": "6.0.3",
+    "electron": "30.5.1",
+    "electron-builder": "24.13.3",
     "eslint": "8.29.0",
     "eslint-config-airbnb": "19.0.4",
     "eslint-config-prettier": "8.5.0",
